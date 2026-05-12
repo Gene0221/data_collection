@@ -1,8 +1,16 @@
-# Camera Calibration Toolkit
+# D435i Calibration Toolkit
 
-这套脚本按“`YAML` 配置驱动 + 多相机分目录管理”设计，适合同时管理 3 台相机的内参标定与去畸变流程。
+This workspace is designed for calibrating a single `Intel RealSense D435i` device. It currently supports:
 
-## 目录约定
+- `RGB` intrinsics calibration
+- `IR Left` intrinsics calibration
+- `IR Right` intrinsics calibration
+- `IR Left <-> IR Right` stereo extrinsics calibration
+- `RGB <-> IR Left` extrinsics calibration
+
+The current version focuses on a single D435i and does not yet handle extrinsic calibration between multiple D435i devices.
+
+## Directory Layout
 
 ```text
 camera_calibration/
@@ -10,110 +18,241 @@ camera_calibration/
     calibration.yaml
   data/
     raw/
-      cam0/
-      cam1/
-      cam2/
+      <session_name>/
+        rgb/
+        ir_left/
+        ir_right/
     output/
-      cam0/
-      cam1/
-      cam2/
+      <session_name>/
+        rgb/
+        ir_left/
+        ir_right/
+        stereo_ir/
+        extrinsics/
+        bundle/
   scripts/
     common.py
+    capture_realsense_dataset.py
     calibrate_camera.py
-    calibrate_all_cameras.py
+    stereo_calibrate.py
+    extrinsic_calibrate.py
+    run_single_device_calibration.py
     undistort_image.py
+  requirements.txt
 ```
 
-建议把三台相机的标定图分别放到：
+`<session_name>` is the save name you enter in the terminal for one capture-and-calibration run.
 
-- `data/raw/cam0`
-- `data/raw/cam1`
-- `data/raw/cam2`
+If the same session name already exists, the script will ask you to choose:
 
-每台相机的输出结果会分别保存到：
+- `overwrite`: delete the existing session and start over
+- `merge`: keep existing files and continue saving with the next frame index
+- `cancel`: abort the current operation
 
-- `data/output/cam0`
-- `data/output/cam1`
-- `data/output/cam2`
+## Pairing Rule
 
-这样每台相机都会拥有自己独立的：
+This project does not need a separate `pairs/` directory. It uses the numeric suffix in filenames to determine synchronized frames:
 
-- `calibration_result.json`
-- `corners_vis/`
-- `undistorted/`
+- `rgb_0001.png`
+- `ir_left_0001.png`
+- `ir_right_0001.png`
 
-## 配置文件
+If the numeric index matches, the images are treated as one synchronized frame set.
 
-所有需要调整的参数都写在 [config/calibration.yaml](C:\Users\zhj80\OneDrive\Desktop\Master Course Material\research\camera_calibration\config\calibration.yaml)：
+## Installation
 
-- `board.pattern_size`
-  棋盘格内角点数量，例如 `[9, 6]`
-- `board.square_size_mm`
-  每个小方格的实际边长，单位 `mm`
-- `corner_detection`
-  角点检测参数
-- `calibration.min_images`
-  每台相机至少要用多少张有效标定图
-- `cameras.cam0/cam1/cam2`
-  每台相机的输入目录、输出目录、文件匹配规则
+### Linux
 
-注意：
-
-- `pattern_size` 是内角点数量，不是黑白格数量
-- 如果你的图片是 `png`，把 `image_pattern` 改成 `*.png`
-
-## 运行方式
-
-先安装依赖：
+Install Python dependencies:
 
 ```bash
-pip install opencv-python pyyaml numpy
+python3 -m pip install -r requirements.txt
 ```
 
-标定单台相机：
+If `pyrealsense2` is not available in your environment, make sure Intel RealSense software and `librealsense` are installed first, then install the Python package again.
+
+### Windows
 
 ```bash
-python scripts/calibrate_camera.py --config config/calibration.yaml --camera-id cam0
+pip install -r requirements.txt
 ```
 
-一次标定所有启用相机：
+## Capture And Preview
+
+### Interactive capture with automatic calibration
 
 ```bash
-python scripts/calibrate_all_cameras.py --config config/calibration.yaml
+python scripts/capture_realsense_dataset.py --config config/calibration.yaml
 ```
 
-对单张图去畸变：
+The script will:
+
+1. Ask for a session name.
+2. Check whether a session with the same name already exists.
+3. Start the D435i `RGB + IR Left + IR Right` streams.
+4. Open a live preview window showing all three streams.
+5. Save synchronized frame sets when you trigger capture.
+6. Automatically start calibration after the default target of `30` synchronized frame sets is reached.
+
+Preview window shortcuts:
+
+- `C`: save the current synchronized frame set
+- `Space`: save the current synchronized frame set
+- `Enter`: save the current synchronized frame set
+- `Q`: quit capture
+
+To capture data without starting calibration automatically:
 
 ```bash
-python scripts/undistort_image.py --config config/calibration.yaml --camera-id cam0 --input path/to/test.jpg
+python scripts/capture_realsense_dataset.py --config config/calibration.yaml --skip-auto-calibration
 ```
 
-对一个目录批量去畸变：
+## Camera Connection Notes
+
+In most cases, plugging the D435i into a working `USB 3.x` port is enough for the script to access the camera, but the following conditions should also be true:
+
+- `pyrealsense2` is installed
+- the operating system can detect the camera correctly
+- no other application is currently using the camera
+- the USB cable and port provide enough bandwidth
+
+If these conditions are satisfied, `capture_realsense_dataset.py` should be able to open the `RGB + IR Left + IR Right` streams directly.
+
+If the script cannot open the device, check:
+
+- whether the camera appears in Intel RealSense Viewer
+- whether the cable supports high-speed data transfer
+- whether the device was connected through `USB 2.0`
+- whether another application is occupying the camera
+
+## Calibration Commands
+
+### Run the full calibration pipeline for an existing session
 
 ```bash
-python scripts/undistort_image.py --config config/calibration.yaml --camera-id cam0 --input path/to/image_dir
+python scripts/run_single_device_calibration.py --config config/calibration.yaml --session-name your_session_name
 ```
 
-## 输出说明
+### Run one intrinsics calibration only
 
-每台相机标定完成后，会生成：
+```bash
+python scripts/calibrate_camera.py --config config/calibration.yaml --session-name your_session_name --sensor-id rgb
+```
+
+Available `sensor-id` values:
+
+- `rgb`
+- `ir_left`
+- `ir_right`
+
+### Run IR stereo calibration only
+
+```bash
+python scripts/stereo_calibrate.py \
+  --config config/calibration.yaml \
+  --session-name your_session_name \
+  --pair-id ir_stereo \
+  --left-calibration data/output/your_session_name/ir_left/calibration_result.json \
+  --right-calibration data/output/your_session_name/ir_right/calibration_result.json
+```
+
+### Run RGB-to-IR-left extrinsics calibration only
+
+```bash
+python scripts/extrinsic_calibrate.py \
+  --config config/calibration.yaml \
+  --session-name your_session_name \
+  --pair-id rgb_to_ir_left \
+  --source-calibration data/output/your_session_name/rgb/calibration_result.json \
+  --target-calibration data/output/your_session_name/ir_left/calibration_result.json
+```
+
+## Outputs
+
+### RGB intrinsics
+
+`data/output/<session_name>/rgb/calibration_result.json`
+
+Contains:
 
 - `camera_matrix`
-  相机内参矩阵
 - `dist_coeffs`
-  畸变系数
 - `optimal_camera_matrix`
-  去畸变使用的优化内参
 - `roi`
-  去畸变后建议裁剪区域
+- `image_size`
 - `rms`
-  OpenCV 返回的 RMS 标定误差
 - `mean_reprojection_error`
-  平均重投影误差
+- `per_image_reprojection_error`
+- `used_images`
 
-## 拍摄建议
+### IR left intrinsics
 
-- 每台相机至少采集 `15` 到 `30` 张图片
-- 标定板尽量覆盖画面中心、边缘、近处、远处
-- 多拍一些倾斜姿态，避免全部正视
-- 避免模糊、过曝、强反光
+`data/output/<session_name>/ir_left/calibration_result.json`
+
+### IR right intrinsics
+
+`data/output/<session_name>/ir_right/calibration_result.json`
+
+These files use the same structure as the RGB intrinsics output.
+
+### IR stereo extrinsics
+
+`data/output/<session_name>/stereo_ir/stereo_calibration_result.json`
+
+Contains:
+
+- `left_sensor_id`
+- `right_sensor_id`
+- `left_camera_matrix`
+- `left_dist_coeffs`
+- `right_camera_matrix`
+- `right_dist_coeffs`
+- `rotation_matrix`
+- `translation_vector`
+- `essential_matrix`
+- `fundamental_matrix`
+- `stereo_rms`
+- `used_frame_indices`
+- `rectification`
+- `R1`
+- `R2`
+- `P1`
+- `P2`
+- `Q`
+- `roi1`
+- `roi2`
+
+### RGB-to-IR-left extrinsics
+
+`data/output/<session_name>/extrinsics/rgb_to_ir_left.json`
+
+Contains:
+
+- `left_sensor_id`
+- `right_sensor_id`
+- `rotation_matrix`
+- `translation_vector`
+- `essential_matrix`
+- `fundamental_matrix`
+- `stereo_rms`
+- `used_frame_indices`
+
+### Bundle file
+
+`data/output/<session_name>/bundle/device_calibration_bundle.json`
+
+This file summarizes:
+
+- chessboard configuration
+- reference frame configuration
+- intrinsics results for all three sensors
+- `ir_stereo` extrinsics results
+- `rgb_to_ir_left` extrinsics results
+
+## Capture Recommendations
+
+- Capture `20` to `30` synchronized frame sets.
+- Change the chessboard pose and position between captures.
+- Cover center, edges, near, and far regions as much as possible.
+- Avoid blur, glare, and motion streaking.
+- Make sure the chessboard is clearly visible in both RGB and IR images.

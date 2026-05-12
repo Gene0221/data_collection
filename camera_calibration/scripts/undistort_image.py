@@ -6,13 +6,14 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from common import ensure_dir, get_camera_paths, load_config, load_json
+from common import ensure_dir, get_sensor_paths, load_config, load_json
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Undistort one image or a directory of images.")
     parser.add_argument("--config", required=True, help="Path to calibration YAML config.")
-    parser.add_argument("--camera-id", required=True, help="Camera ID defined in config.")
+    parser.add_argument("--session-name", required=True, help="Saved capture session name.")
+    parser.add_argument("--sensor-id", required=True, help="Sensor ID defined in config.")
     parser.add_argument("--input", required=True, help="Path to one image or a directory of images.")
     parser.add_argument("--output-dir", default="", help="Optional output directory override.")
     return parser.parse_args()
@@ -29,8 +30,7 @@ def iter_images(input_path: Path, allowed_exts: set[str]) -> list[Path]:
 def main() -> None:
     args = parse_args()
     config = load_config(args.config)
-    camera_id = args.camera_id
-    paths = get_camera_paths(config, camera_id)
+    paths = get_sensor_paths(config, args.session_name, args.sensor_id)
     calibration = load_json(paths.calibration_file)
 
     input_path = Path(args.input).resolve()
@@ -50,7 +50,7 @@ def main() -> None:
     save_side_by_side = bool(undistort_cfg.get("save_side_by_side", True))
 
     for image_path in images:
-        image = cv2.imread(str(image_path))
+        image = cv2.imread(str(image_path), cv2.IMREAD_UNCHANGED)
         if image is None:
             print(f"[WARN] Failed to read: {image_path}")
             continue
