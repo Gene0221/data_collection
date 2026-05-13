@@ -1,0 +1,22 @@
+camera_a:
+  image_topic: /camera_a/color/image_raw
+  frame_id: camera_a_color_optical_frame
+
+camera_b:
+  image_topic: /camera_b/color/image_raw
+  frame_id: camera_b_color_optical_frame
+
+synchronization:
+  queue_size: 10
+  slop_seconds: 0.03
+
+capture:
+  session_name: sample_session
+  output_root: /tmp/two_camera_rgb_extrinsic
+  preview_width: 1600
+  image_extension: .png
+
+checkerboard:
+  rows: 6
+  cols: 9
+  square_size_mm: 25.0

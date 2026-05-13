@@ -1,0 +1,33 @@
+<launch>
+  <arg name="serial_no_camera_a" default="" />
+  <arg name="serial_no_camera_b" default="" />
+  <arg name="camera_name_a" default="camera_a" />
+  <arg name="camera_name_b" default="camera_b" />
+  <arg name="color_width" default="1920" />
+  <arg name="color_height" default="1080" />
+  <arg name="color_fps" default="30" />
+
+  <arg name="session_name" default="sample_session" />
+  <arg name="output_root" default="/tmp/two_camera_rgb_extrinsic" />
+  <arg name="slop_seconds" default="0.03" />
+  <arg name="queue_size" default="10" />
+
+  <include file="$(find two_camera_rgb_extrinsic)/launch/dual_d435i_rgb.launch">
+    <arg name="serial_no_camera_a" value="$(arg serial_no_camera_a)" />
+    <arg name="serial_no_camera_b" value="$(arg serial_no_camera_b)" />
+    <arg name="camera_name_a" value="$(arg camera_name_a)" />
+    <arg name="camera_name_b" value="$(arg camera_name_b)" />
+    <arg name="color_width" value="$(arg color_width)" />
+    <arg name="color_height" value="$(arg color_height)" />
+    <arg name="color_fps" value="$(arg color_fps)" />
+  </include>
+
+  <node pkg="two_camera_rgb_extrinsic" type="capture_rgb_pairs.py" name="capture_rgb_pairs" output="screen">
+    <param name="camera_a/image_topic" value="/$(arg camera_name_a)/color/image_raw" />
+    <param name="camera_b/image_topic" value="/$(arg camera_name_b)/color/image_raw" />
+    <param name="capture/session_name" value="$(arg session_name)" />
+    <param name="capture/output_root" value="$(arg output_root)" />
+    <param name="synchronization/slop_seconds" value="$(arg slop_seconds)" />
+    <param name="synchronization/queue_size" value="$(arg queue_size)" />
+  </node>
+</launch>

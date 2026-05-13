@@ -4,3 +4,9 @@ __pycache__/
 .venv/
 venv/
 env/
+
+ros_ws/build/
+ros_ws/devel/
+ros_ws/log/
+
+camera_calibration/data/boards/
