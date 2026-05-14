@@ -85,7 +85,7 @@ This publishes:
 
 Only RGB is enabled by default in this launch flow.
 Camera `A` is started first. Camera `B` starts only after camera `A` is already publishing its RGB topic.
-The launcher also starts `rviz` automatically with a placeholder configuration:
+The launch file also starts `rviz` automatically with a placeholder configuration:
 
 - `src/two_camera_rgb_extrinsic/config/dual_camera_preview.rviz`
 

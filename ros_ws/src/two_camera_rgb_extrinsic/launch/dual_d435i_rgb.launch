@@ -21,7 +21,7 @@
     <param name="color_fps" value="$(arg color_fps)" />
     <param name="startup_timeout_seconds" value="$(arg startup_timeout_seconds)" />
     <param name="inter_camera_delay_seconds" value="$(arg inter_camera_delay_seconds)" />
-    <param name="launch_rviz" value="$(arg launch_rviz)" />
-    <param name="rviz_config" value="$(arg rviz_config)" />
   </node>
+
+  <node if="$(arg launch_rviz)" pkg="rviz" type="rviz" name="dual_camera_preview_rviz" args="-d $(arg rviz_config)" output="screen" />
 </launch>

@@ -15,8 +15,6 @@ class DualD435iLauncher:
         self.processes: list[subprocess.Popen] = []
         self.startup_timeout = float(rospy.get_param("~startup_timeout_seconds", 20.0))
         self.inter_camera_delay = float(rospy.get_param("~inter_camera_delay_seconds", 2.0))
-        self.launch_rviz = bool(rospy.get_param("~launch_rviz", True))
-        self.rviz_config = str(rospy.get_param("~rviz_config", ""))
 
         self.camera_a = {
             "serial_no": str(rospy.get_param("~serial_no_camera_a", "")),
@@ -43,9 +41,6 @@ class DualD435iLauncher:
             self.launch_camera(self.camera_b)
             self.wait_for_topic(self.topic_for(self.camera_b["camera_name"]))
             rospy.loginfo("Camera B is ready.")
-
-            if self.launch_rviz:
-                self.launch_rviz_process()
 
             rospy.loginfo("Dual D435i RGB sequential launcher is running.")
             rospy.spin()
@@ -83,14 +78,6 @@ class DualD435iLauncher:
         rospy.loginfo("Waiting for topic: %s", topic_name)
         rospy.wait_for_message(topic_name, Image, timeout=self.startup_timeout)
         rospy.loginfo("Topic is active: %s", topic_name)
-
-    def launch_rviz_process(self) -> None:
-        command = ["rviz"]
-        if self.rviz_config:
-            command.extend(["-d", self.rviz_config])
-        rospy.loginfo("Starting rviz with command: %s", " ".join(command))
-        process = subprocess.Popen(command, preexec_fn=os.setsid)
-        self.processes.append(process)
 
     def shutdown_all(self) -> None:
         for process in reversed(self.processes):
