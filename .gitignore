@@ -10,3 +10,6 @@ ros_ws/devel/
 ros_ws/log/
 
 camera_calibration/data/boards/
+
+muti_camera_calibration/.vscode/
+muti_camera_calibration/output/
