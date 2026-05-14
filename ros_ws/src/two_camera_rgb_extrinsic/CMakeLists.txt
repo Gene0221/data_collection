@@ -14,6 +14,7 @@ catkin_package()
 catkin_install_python(PROGRAMS
   scripts/capture_rgb_pairs.py
   scripts/estimate_rgb_extrinsics.py
+  scripts/launch_dual_d435i_rgb.py
   scripts/print_realsense_devices.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )

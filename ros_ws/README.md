@@ -23,6 +23,7 @@ ros_ws/
       config/
         default.yaml
         dual_d435i.yaml
+        dual_camera_preview.rviz
       launch/
         capture_pairs.launch
         dual_d435i_rgb.launch
@@ -30,6 +31,7 @@ ros_ws/
       scripts/
         capture_rgb_pairs.py
         estimate_rgb_extrinsics.py
+        launch_dual_d435i_rgb.py
         print_realsense_devices.py
 ```
 
@@ -56,7 +58,7 @@ source devel/setup.bash
 
 ## Start Two D435i RGB Topics
 
-This workspace includes launch files that call `realsense2_camera` for both devices.
+This workspace includes a sequential launcher that starts `realsense2_camera` for both devices.
 
 List connected RealSense serial numbers first:
 
@@ -82,6 +84,12 @@ This publishes:
 - `/camera_b/color/image_raw`
 
 Only RGB is enabled by default in this launch flow.
+Camera `A` is started first. Camera `B` starts only after camera `A` is already publishing its RGB topic.
+The launcher also starts `rviz` automatically with a placeholder configuration:
+
+- `src/two_camera_rgb_extrinsic/config/dual_camera_preview.rviz`
+
+You can open that configuration in `rviz`, modify it, and save your own version later.
 
 ## Capture Paired RGB Images
 
