@@ -3,9 +3,9 @@
   <arg name="serial_no_camera_b" default="" />
   <arg name="camera_name_a" default="camera_a" />
   <arg name="camera_name_b" default="camera_b" />
-  <arg name="color_width" default="1920" />
-  <arg name="color_height" default="1080" />
-  <arg name="color_fps" default="30" />
+  <arg name="color_width" default="1280" />
+  <arg name="color_height" default="720" />
+  <arg name="color_fps" default="15" />
   <arg name="startup_timeout_seconds" default="20.0" />
   <arg name="inter_camera_delay_seconds" default="2.0" />
   <arg name="launch_rviz" default="true" />

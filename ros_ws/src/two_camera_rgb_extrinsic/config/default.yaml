@@ -7,14 +7,19 @@ camera_b:
   frame_id: camera_b_color_optical_frame
 
 synchronization:
-  queue_size: 10
+  queue_size: 5
   slop_seconds: 0.03
+  subscriber_queue_size: 1
+  subscriber_buffer_bytes: 16777216
 
 capture:
   session_name: sample_session
   output_root: /tmp/two_camera_rgb_extrinsic
-  preview_width: 1600
+  preview_width: 1280
+  preview_fps: 10
   image_extension: .png
+  png_compression: 3
+  jpeg_quality: 95
 
 checkerboard:
   rows: 6

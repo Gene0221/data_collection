@@ -91,11 +91,26 @@ The launch file also starts `rviz` automatically with a placeholder configuratio
 
 You can open that configuration in `rviz`, modify it, and save your own version later.
 
+To keep two-camera ROS preview responsive, the default RGB stream settings are intentionally lighter:
+
+- `1280x720`
+- `15 fps`
+
+If your machine and USB setup are stable, you can override them from the launch command line.
+
 ## Capture Paired RGB Images
 
 Edit the topic names and output directory in:
 
 [`src/two_camera_rgb_extrinsic/config/default.yaml`](C:/Users/zhj80/OneDrive/Desktop/Master Course Material/research/data_collection/ros_ws/src/two_camera_rgb_extrinsic/config/default.yaml)
+
+The capture node is optimized to keep ROS subscription responsive:
+
+- synchronized callbacks only store the latest ROS messages
+- interactive capture now runs in a C++ node instead of the older Python path
+- image decoding is rate-limited by the preview loop
+- image saving is handled asynchronously in a background worker
+- preview defaults are reduced to a lighter refresh rate and width
 
 Then run:
 
@@ -115,6 +130,8 @@ roslaunch two_camera_rgb_extrinsic dual_d435i_capture.launch \
   serial_no_camera_b:=<serial_b> \
   session_name:=session_01
 ```
+
+In this combined capture launch, `rviz` is disabled by default so that the capture path does not add another heavy subscriber on top of the two raw RGB streams.
 
 In the preview window:
 

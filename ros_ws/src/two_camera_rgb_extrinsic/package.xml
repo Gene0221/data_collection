@@ -10,8 +10,10 @@
   <buildtool_depend>catkin</buildtool_depend>
 
   <depend>cv_bridge</depend>
+  <depend>image_transport</depend>
   <depend>message_filters</depend>
   <depend>rosgraph</depend>
+  <depend>roscpp</depend>
   <depend>rospy</depend>
   <depend>sensor_msgs</depend>
   <depend>std_msgs</depend>
