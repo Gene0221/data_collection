@@ -72,6 +72,7 @@ class CameraWorker(threading.Thread):
         self._stop_event = threading.Event()
         self._started_ok = threading.Event()
         self._startup_error: Optional[BaseException] = None
+        self._has_received_frame = False
 
     def run(self) -> None:
         try:
@@ -79,18 +80,23 @@ class CameraWorker(threading.Thread):
             config.enable_device(self.serial_no)
             config.enable_stream(rs.stream.color, self.width, self.height, rs.format.bgr8, self.fps)
             self._pipeline.start(config)
-
-            for _ in range(self.warmup_frames):
-                if self._stop_event.is_set():
-                    break
-                self._pipeline.wait_for_frames()
-
             self._started_ok.set()
 
+            warmup_done = 0
+
             while not self._stop_event.is_set():
-                frames = self._pipeline.wait_for_frames()
+                try:
+                    frames = self._pipeline.wait_for_frames(5000)
+                except RuntimeError:
+                    continue
                 color_frame = frames.get_color_frame()
                 if not color_frame:
+                    continue
+
+                self._has_received_frame = True
+
+                if warmup_done < self.warmup_frames:
+                    warmup_done += 1
                     continue
 
                 host_timestamp_s = time.perf_counter()
@@ -393,7 +399,7 @@ def main() -> None:
     worker_a.wait_until_started(args.startup_timeout)
     worker_b.wait_until_started(args.startup_timeout)
 
-    print("[INFO] Both cameras started. Press S to save a pair, Q to quit.")
+    print("[INFO] Both cameras started. Waiting for RGB frames...")
     window_name = "Two D435i RGB Pair Capture"
     cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
 
@@ -402,6 +408,17 @@ def main() -> None:
             latest_a = worker_a.buffer.latest()
             latest_b = worker_b.buffer.latest()
             preview = build_preview(latest_a, latest_b, args.preview_width, saved_pairs, last_delta_ms)
+            if latest_a is None or latest_b is None:
+                cv2.putText(
+                    preview,
+                    "Waiting for camera frames...",
+                    (20, 80),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.8,
+                    (0, 165, 255),
+                    2,
+                    cv2.LINE_AA,
+                )
             cv2.imshow(window_name, preview)
             key = cv2.waitKey(1) & 0xFF
 
