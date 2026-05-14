@@ -22,6 +22,11 @@ except ImportError as exc:  # pragma: no cover
     ) from exc
 
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+DEFAULT_CONFIG_PATH = SCRIPT_DIR / "config" / "capture.yaml"
+DEFAULT_OUTPUT_ROOT = SCRIPT_DIR / "output"
+
+
 @dataclass
 class FrameRecord:
     image: np.ndarray
@@ -72,7 +77,6 @@ class CameraWorker(threading.Thread):
         self._stop_event = threading.Event()
         self._started_ok = threading.Event()
         self._startup_error: Optional[BaseException] = None
-        self._has_received_frame = False
 
     def run(self) -> None:
         try:
@@ -83,7 +87,6 @@ class CameraWorker(threading.Thread):
             self._started_ok.set()
 
             warmup_done = 0
-
             while not self._stop_event.is_set():
                 try:
                     frames = self._pipeline.wait_for_frames(5000)
@@ -93,18 +96,14 @@ class CameraWorker(threading.Thread):
                 if not color_frame:
                     continue
 
-                self._has_received_frame = True
-
                 if warmup_done < self.warmup_frames:
                     warmup_done += 1
                     continue
 
-                host_timestamp_s = time.perf_counter()
-                image = np.asanyarray(color_frame.get_data()).copy()
                 record = FrameRecord(
-                    image=image,
+                    image=np.asanyarray(color_frame.get_data()).copy(),
                     device_timestamp_ms=float(color_frame.get_timestamp()),
-                    host_timestamp_s=host_timestamp_s,
+                    host_timestamp_s=time.perf_counter(),
                     frame_number=int(color_frame.get_frame_number()),
                     camera_label=self.camera_label,
                 )
@@ -146,33 +145,34 @@ def list_realsense_devices() -> list[dict[str, str]]:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Capture synchronized RGB image pairs from two D435i cameras using "
-            "dual buffers and minimum host-timestamp matching."
+            "Capture RGB images from one or two D435i cameras. "
+            "Two-camera mode uses dual buffers and minimum host-timestamp matching."
         )
     )
-    parser.add_argument(
-        "--config",
-        default="muti_camera_calibration/config/capture.yaml",
-        help="Path to YAML config file.",
-    )
-    parser.add_argument("--serial-a", default="", help="Serial number of camera A. If omitted, use the first detected device.")
-    parser.add_argument("--serial-b", default="", help="Serial number of camera B. If omitted, use the second detected device.")
+    parser.add_argument("--config", default=str(DEFAULT_CONFIG_PATH), help="Path to YAML config file.")
+    parser.add_argument("--serial-a", default="", help="Serial number of camera A.")
+    parser.add_argument("--serial-b", default="", help="Serial number of camera B.")
     parser.add_argument("--width", type=int, default=1280, help="RGB stream width.")
     parser.add_argument("--height", type=int, default=720, help="RGB stream height.")
     parser.add_argument("--fps", type=int, default=15, help="RGB stream FPS.")
     parser.add_argument("--buffer-size", type=int, default=10, help="Number of recent frames kept per camera.")
     parser.add_argument("--max-delta-ms", type=float, default=10.0, help="Maximum allowed host timestamp delta in milliseconds.")
     parser.add_argument("--session-name", default="", help="Session directory name under output-root.")
-    parser.add_argument("--output-root", default="muti_camera_calibration/output", help="Root directory for captured pairs.")
+    parser.add_argument("--output-root", default=str(DEFAULT_OUTPUT_ROOT), help="Root directory for captured pairs.")
     parser.add_argument("--preview-width", type=int, default=1280, help="Preview canvas width.")
     parser.add_argument("--startup-timeout", type=float, default=20.0, help="Camera startup timeout in seconds.")
     parser.add_argument("--warmup-frames", type=int, default=15, help="Frames to discard after pipeline start.")
+    parser.add_argument("--expected-camera-count", type=int, default=2, help="Expected number of cameras to use.")
     parser.add_argument("--list-devices", action="store_true", help="Only list detected RealSense devices and exit.")
     return parser.parse_args()
 
 
 def load_config(path: str | Path) -> dict:
-    config_path = Path(path).resolve()
+    config_path = Path(path)
+    if not config_path.is_absolute():
+        config_path = (SCRIPT_DIR / config_path).resolve()
+    else:
+        config_path = config_path.resolve()
     if not config_path.exists():
         return {}
     with config_path.open("r", encoding="utf-8") as f:
@@ -192,7 +192,8 @@ def apply_config_defaults(args: argparse.Namespace, config: dict) -> argparse.Na
         args.serial_a = str(camera_a_cfg.get("serial_no", ""))
     if not args.serial_b:
         args.serial_b = str(camera_b_cfg.get("serial_no", ""))
-
+    if args.expected_camera_count == 2:
+        args.expected_camera_count = int(capture_cfg.get("expected_camera_count", args.expected_camera_count))
     if args.width == 1280:
         args.width = int(capture_cfg.get("width", args.width))
     if args.height == 720:
@@ -205,7 +206,7 @@ def apply_config_defaults(args: argparse.Namespace, config: dict) -> argparse.Na
         args.max_delta_ms = float(sync_cfg.get("max_delta_ms", args.max_delta_ms))
     if args.session_name == "":
         args.session_name = str(capture_cfg.get("session_name", args.session_name))
-    if args.output_root == "muti_camera_calibration/output":
+    if args.output_root == str(DEFAULT_OUTPUT_ROOT):
         args.output_root = str(capture_cfg.get("output_root", args.output_root))
     if args.preview_width == 1280:
         args.preview_width = int(capture_cfg.get("preview_width", args.preview_width))
@@ -213,28 +214,34 @@ def apply_config_defaults(args: argparse.Namespace, config: dict) -> argparse.Na
         args.startup_timeout = float(capture_cfg.get("startup_timeout", args.startup_timeout))
     if args.warmup_frames == 15:
         args.warmup_frames = int(capture_cfg.get("warmup_frames", args.warmup_frames))
-
     return args
 
 
-def resolve_serials(requested_a: str, requested_b: str) -> tuple[str, str]:
+def resolve_serials(requested_a: str, requested_b: str, expected_camera_count: int) -> list[str]:
     devices = list_realsense_devices()
-    if len(devices) < 2:
-        raise RuntimeError(f"Expected at least 2 RealSense devices, found {len(devices)}.")
+    if len(devices) < expected_camera_count:
+        raise RuntimeError(f"Expected at least {expected_camera_count} RealSense devices, found {len(devices)}.")
+
+    if expected_camera_count == 1:
+        if requested_a:
+            return [requested_a]
+        if requested_b:
+            return [requested_b]
+        return [devices[0]["serial_no"]]
 
     if requested_a and requested_b:
-        return requested_a, requested_b
+        return [requested_a, requested_b]
     if requested_a and not requested_b:
         remaining = [d["serial_no"] for d in devices if d["serial_no"] != requested_a]
         if not remaining:
-            raise RuntimeError("Could not auto-select camera B serial number.")
-        return requested_a, remaining[0]
+            raise RuntimeError("Could not auto-select camera B serial number from the currently connected devices.")
+        return [requested_a, remaining[0]]
     if requested_b and not requested_a:
         remaining = [d["serial_no"] for d in devices if d["serial_no"] != requested_b]
         if not remaining:
-            raise RuntimeError("Could not auto-select camera A serial number.")
-        return remaining[0], requested_b
-    return devices[0]["serial_no"], devices[1]["serial_no"]
+            raise RuntimeError("Could not auto-select camera A serial number from the currently connected devices.")
+        return [remaining[0], requested_b]
+    return [devices[0]["serial_no"], devices[1]["serial_no"]]
 
 
 def prompt_session_name(default_name: str) -> str:
@@ -242,36 +249,49 @@ def prompt_session_name(default_name: str) -> str:
     return session_name or default_name
 
 
-def prepare_output_dirs(output_root: Path, session_name: str) -> tuple[Path, Path, Path, Path]:
+def prepare_output_dirs(output_root: Path, session_name: str, expected_camera_count: int) -> tuple[Path, Path, Optional[Path], Path]:
     session_dir = output_root / session_name
     camera_a_dir = session_dir / "camera_a"
-    camera_b_dir = session_dir / "camera_b"
+    camera_b_dir = session_dir / "camera_b" if expected_camera_count >= 2 else None
     metadata_path = session_dir / "pairs_metadata.json"
     camera_a_dir.mkdir(parents=True, exist_ok=True)
-    camera_b_dir.mkdir(parents=True, exist_ok=True)
+    if camera_b_dir is not None:
+        camera_b_dir.mkdir(parents=True, exist_ok=True)
     return session_dir, camera_a_dir, camera_b_dir, metadata_path
 
 
-def build_preview(frame_a: Optional[FrameRecord], frame_b: Optional[FrameRecord], preview_width: int, saved_pairs: int, last_delta_ms: Optional[float]) -> np.ndarray:
+def build_preview(
+    frame_a: Optional[FrameRecord],
+    frame_b: Optional[FrameRecord],
+    preview_width: int,
+    saved_items: int,
+    last_delta_ms: Optional[float],
+    expected_camera_count: int,
+) -> np.ndarray:
     blank = np.zeros((480, 640, 3), dtype=np.uint8)
     image_a = frame_a.image if frame_a is not None else blank
-    image_b = frame_b.image if frame_b is not None else blank
-
     panel_a = annotate_panel(image_a.copy(), "Camera A RGB")
-    panel_b = annotate_panel(image_b.copy(), "Camera B RGB")
-    width_each = max(1, preview_width // 2)
-    panel_a = resize_to_width(panel_a, width_each)
-    panel_b = resize_to_width(panel_b, width_each)
-    target_height = min(panel_a.shape[0], panel_b.shape[0])
-    panel_a = resize_to_height(panel_a, target_height)
-    panel_b = resize_to_height(panel_b, target_height)
-    preview = cv2.hconcat([panel_a, panel_b])
 
-    if last_delta_ms is None:
+    if expected_camera_count == 1:
+        preview = resize_to_width(panel_a, preview_width)
+    else:
+        image_b = frame_b.image if frame_b is not None else blank
+        panel_b = annotate_panel(image_b.copy(), "Camera B RGB")
+        width_each = max(1, preview_width // 2)
+        panel_a = resize_to_width(panel_a, width_each)
+        panel_b = resize_to_width(panel_b, width_each)
+        target_height = min(panel_a.shape[0], panel_b.shape[0])
+        panel_a = resize_to_height(panel_a, target_height)
+        panel_b = resize_to_height(panel_b, target_height)
+        preview = cv2.hconcat([panel_a, panel_b])
+
+    if expected_camera_count == 1:
+        delta_text = "single-camera mode"
+    elif last_delta_ms is None:
         delta_text = "delta_t: N/A"
     else:
         delta_text = f"delta_t: {last_delta_ms:.2f} ms"
-    status = f"Saved pairs: {saved_pairs} | {delta_text} | Keys: S save, Q quit"
+    status = f"Saved items: {saved_items} | {delta_text} | Keys: S save, Q quit"
     cv2.putText(preview, status, (20, max(40, preview.shape[0] - 20)), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2, cv2.LINE_AA)
     return preview
 
@@ -316,6 +336,27 @@ def select_best_pair(buffer_a: FrameBuffer, buffer_b: FrameBuffer, trigger_time_
     return best_a, best_b, delta_ms
 
 
+def save_single(
+    item_index: int,
+    frame: FrameRecord,
+    camera_a_dir: Path,
+    metadata_records: list[dict[str, object]],
+) -> None:
+    filename = f"camera_a_{item_index:04d}.png"
+    path = camera_a_dir / filename
+    cv2.imwrite(str(path), frame.image)
+    metadata_records.append(
+        {
+            "item_index": item_index,
+            "camera_a_image": filename,
+            "camera_a_host_timestamp_s": frame.host_timestamp_s,
+            "camera_a_device_timestamp_ms": frame.device_timestamp_ms,
+            "camera_a_frame_number": frame.frame_number,
+            "mode": "single_camera",
+        }
+    )
+
+
 def save_pair(
     pair_index: int,
     frame_a: FrameRecord,
@@ -353,6 +394,7 @@ def save_pair(
             "camera_b_frame_number": frame_b.frame_number,
             "timestamp_delta_ms": delta_ms,
             "match_status": match_status,
+            "mode": "dual_camera",
         }
     )
 
@@ -378,37 +420,52 @@ def main() -> None:
             print(f"    firmware={device['firmware']}")
         return
 
-    serial_a, serial_b = resolve_serials(args.serial_a, args.serial_b)
-    print(f"[INFO] Camera A serial: {serial_a}")
-    print(f"[INFO] Camera B serial: {serial_b}")
+    serials = resolve_serials(args.serial_a, args.serial_b, args.expected_camera_count)
+    print(f"[INFO] Camera count mode: {args.expected_camera_count}")
+    print(f"[INFO] Camera A serial: {serials[0]}")
+    if args.expected_camera_count >= 2:
+        print(f"[INFO] Camera B serial: {serials[1]}")
 
-    default_session_name = time.strftime("rgb_pair_session_%Y%m%d_%H%M%S")
+    default_session_name = time.strftime("rgb_capture_session_%Y%m%d_%H%M%S")
     session_name = args.session_name.strip() if args.session_name.strip() else prompt_session_name(default_session_name)
-    output_root = Path(args.output_root).resolve()
-    session_dir, camera_a_dir, camera_b_dir, metadata_path = prepare_output_dirs(output_root, session_name)
+    output_root = Path(args.output_root)
+    if not output_root.is_absolute():
+        output_root = (SCRIPT_DIR / output_root).resolve()
+    else:
+        output_root = output_root.resolve()
+    session_dir, camera_a_dir, camera_b_dir, metadata_path = prepare_output_dirs(output_root, session_name, args.expected_camera_count)
 
-    worker_a = CameraWorker(serial_a, "A", args.width, args.height, args.fps, args.buffer_size, args.warmup_frames)
-    worker_b = CameraWorker(serial_b, "B", args.width, args.height, args.fps, args.buffer_size, args.warmup_frames)
+    worker_a = CameraWorker(serials[0], "A", args.width, args.height, args.fps, args.buffer_size, args.warmup_frames)
+    worker_a.start()
+    worker_a.wait_until_started(args.startup_timeout)
+
+    worker_b: Optional[CameraWorker] = None
+    if args.expected_camera_count >= 2:
+        worker_b = CameraWorker(serials[1], "B", args.width, args.height, args.fps, args.buffer_size, args.warmup_frames)
+        worker_b.start()
+        worker_b.wait_until_started(args.startup_timeout)
 
     metadata_records: list[dict[str, object]] = []
-    saved_pairs = 0
+    saved_items = 0
     last_delta_ms: Optional[float] = None
 
-    worker_a.start()
-    worker_b.start()
-    worker_a.wait_until_started(args.startup_timeout)
-    worker_b.wait_until_started(args.startup_timeout)
-
-    print("[INFO] Both cameras started. Waiting for RGB frames...")
-    window_name = "Two D435i RGB Pair Capture"
+    print("[INFO] Cameras started. Press S to save, Q to quit.")
+    window_name = "D435i RGB Capture"
     cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
 
     try:
         while True:
             latest_a = worker_a.buffer.latest()
-            latest_b = worker_b.buffer.latest()
-            preview = build_preview(latest_a, latest_b, args.preview_width, saved_pairs, last_delta_ms)
-            if latest_a is None or latest_b is None:
+            latest_b = worker_b.buffer.latest() if worker_b is not None else None
+            preview = build_preview(
+                latest_a,
+                latest_b,
+                args.preview_width,
+                saved_items,
+                last_delta_ms,
+                args.expected_camera_count,
+            )
+            if latest_a is None or (args.expected_camera_count >= 2 and latest_b is None):
                 cv2.putText(
                     preview,
                     "Waiting for camera frames...",
@@ -426,53 +483,65 @@ def main() -> None:
                 break
 
             if key in {ord("s"), ord("S")}:
-                trigger_time_s = time.perf_counter()
-                best_a, best_b, delta_ms = select_best_pair(worker_a.buffer, worker_b.buffer, trigger_time_s)
-                if best_a is None or best_b is None or delta_ms is None:
-                    print("[WARN] No valid synchronized pair is available yet.")
-                    continue
+                if args.expected_camera_count == 1:
+                    frame = worker_a.buffer.latest()
+                    if frame is None:
+                        print("[WARN] No frame is available yet.")
+                        continue
+                    saved_items += 1
+                    save_single(saved_items, frame, camera_a_dir, metadata_records)
+                    print(f"[DONE] Saved item {saved_items:04d} | frame={frame.frame_number}")
+                else:
+                    trigger_time_s = time.perf_counter()
+                    best_a, best_b, delta_ms = select_best_pair(worker_a.buffer, worker_b.buffer, trigger_time_s)  # type: ignore[arg-type]
+                    if best_a is None or best_b is None or delta_ms is None:
+                        print("[WARN] No valid synchronized pair is available yet.")
+                        continue
 
-                last_delta_ms = delta_ms
-                if delta_ms > args.max_delta_ms:
-                    print(f"[WARN] Pair rejected. delta_t = {delta_ms:.2f} ms exceeds threshold {args.max_delta_ms:.2f} ms.")
-                    continue
+                    last_delta_ms = delta_ms
+                    if delta_ms > args.max_delta_ms:
+                        print(f"[WARN] Pair rejected. delta_t = {delta_ms:.2f} ms exceeds threshold {args.max_delta_ms:.2f} ms.")
+                        continue
 
-                saved_pairs += 1
-                save_pair(saved_pairs, best_a, best_b, delta_ms, camera_a_dir, camera_b_dir, metadata_records)
-                print(
-                    "[DONE] Saved pair "
-                    f"{saved_pairs:04d} | "
-                    f"A frame={best_a.frame_number}, B frame={best_b.frame_number}, "
-                    f"delta_t={delta_ms:.2f} ms"
-                )
+                    saved_items += 1
+                    save_pair(saved_items, best_a, best_b, delta_ms, camera_a_dir, camera_b_dir, metadata_records)  # type: ignore[arg-type]
+                    print(
+                        "[DONE] Saved pair "
+                        f"{saved_items:04d} | "
+                        f"A frame={best_a.frame_number}, B frame={best_b.frame_number}, "
+                        f"delta_t={delta_ms:.2f} ms"
+                    )
     finally:
         worker_a.stop()
-        worker_b.stop()
         worker_a.join(timeout=5)
-        worker_b.join(timeout=5)
+        if worker_b is not None:
+            worker_b.stop()
+            worker_b.join(timeout=5)
         cv2.destroyAllWindows()
 
         payload = {
             "session_name": session_name,
             "output_root": str(output_root),
             "session_dir": str(session_dir),
+            "expected_camera_count": args.expected_camera_count,
             "camera_a": {
-                "serial_no": serial_a,
-                "width": args.width,
-                "height": args.height,
-                "fps": args.fps,
-            },
-            "camera_b": {
-                "serial_no": serial_b,
+                "serial_no": serials[0],
                 "width": args.width,
                 "height": args.height,
                 "fps": args.fps,
             },
             "buffer_size": args.buffer_size,
-            "max_delta_ms": args.max_delta_ms,
-            "saved_pair_count": saved_pairs,
-            "pairs": metadata_records,
+            "saved_item_count": saved_items,
+            "items": metadata_records,
         }
+        if args.expected_camera_count >= 2:
+            payload["camera_b"] = {
+                "serial_no": serials[1],
+                "width": args.width,
+                "height": args.height,
+                "fps": args.fps,
+            }
+            payload["max_delta_ms"] = args.max_delta_ms
         write_metadata(metadata_path, payload)
         print(f"[DONE] Metadata saved to: {metadata_path}")
 

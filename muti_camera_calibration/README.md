@@ -22,6 +22,7 @@ Default configuration file:
 
 It currently stores:
 
+- expected number of connected cameras
 - camera A serial number
 - camera B serial number
 - RGB width / height / fps

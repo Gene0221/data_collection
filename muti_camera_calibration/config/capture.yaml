@@ -5,6 +5,7 @@ camera_b:
   serial_no: ""
 
 capture:
+  expected_camera_count: 1
   width: 1280
   height: 720
   fps: 15
@@ -12,7 +13,7 @@ capture:
   warmup_frames: 15
   startup_timeout: 20.0
   session_name: ""
-  output_root: "muti_camera_calibration/output"
+  output_root: "output"
 
 synchronization:
   buffer_size: 10
