@@ -14,6 +14,7 @@ import yaml
 SCRIPT_DIR = Path(__file__).resolve().parent
 DEFAULT_CONFIG_PATH = SCRIPT_DIR / "config" / "extrinsics.yaml"
 DEFAULT_OUTPUT_NAME = "rgb_extrinsics_result"
+DEFAULT_OUTPUT_ROOT = SCRIPT_DIR / "output"
 
 
 def parse_args() -> argparse.Namespace:
@@ -23,7 +24,7 @@ def parse_args() -> argparse.Namespace:
         )
     )
     parser.add_argument("--config", default=str(DEFAULT_CONFIG_PATH), help="Path to YAML config file.")
-    parser.add_argument("--dataset-dir", default="", help="Dataset directory containing camera_a/ and camera_b/.")
+    parser.add_argument("--session-name", default="", help="Session name under the output directory.")
     parser.add_argument("--camera-a-intrinsics", default="", help="Path to camera A RGB intrinsics JSON/YAML.")
     parser.add_argument("--camera-b-intrinsics", default="", help="Path to camera B RGB intrinsics JSON/YAML.")
     parser.add_argument("--rows", type=int, default=0, help="Checkerboard inner corner rows.")
@@ -62,13 +63,12 @@ def load_config(path: str | Path) -> dict[str, Any]:
 
 
 def apply_config_defaults(args: argparse.Namespace, config: dict[str, Any]) -> argparse.Namespace:
-    dataset_cfg = config.get("dataset", {})
     intrinsics_cfg = config.get("intrinsics", {})
     checkerboard_cfg = config.get("checkerboard", {})
     output_cfg = config.get("output", {})
 
-    if not args.dataset_dir:
-        args.dataset_dir = str(dataset_cfg.get("dir", ""))
+    if not args.session_name:
+        args.session_name = str(output_cfg.get("session_name", ""))
     if not args.camera_a_intrinsics:
         args.camera_a_intrinsics = str(intrinsics_cfg.get("camera_a", ""))
     if not args.camera_b_intrinsics:
@@ -88,6 +88,10 @@ def apply_config_defaults(args: argparse.Namespace, config: dict[str, Any]) -> a
     if args.min_valid_pairs == 3:
         args.min_valid_pairs = int(output_cfg.get("min_valid_pairs", args.min_valid_pairs))
     return args
+
+
+def prompt_dataset_dir() -> str:
+    return input("Enter session name: ").strip()
 
 
 def create_object_points(rows: int, cols: int, square_size_mm: float) -> np.ndarray:
@@ -270,8 +274,8 @@ def write_outputs(dataset_dir: Path, output_name: str, payload: dict[str, Any]) 
 
 
 def validate_args(args: argparse.Namespace) -> None:
-    if not args.dataset_dir:
-        raise ValueError("dataset-dir is required.")
+    if not args.session_name:
+        raise ValueError("session-name is required.")
     if not args.camera_a_intrinsics:
         raise ValueError("camera-a-intrinsics is required.")
     if not args.camera_b_intrinsics:
@@ -288,10 +292,12 @@ def main() -> None:
     args = parse_args()
     config = load_config(args.config)
     args = apply_config_defaults(args, config)
+    if not args.session_name:
+        args.session_name = prompt_dataset_dir()
     validate_args(args)
 
     config_path = resolve_path(args.config)
-    dataset_dir = resolve_path(args.dataset_dir, config_path.parent)
+    dataset_dir = (DEFAULT_OUTPUT_ROOT / args.session_name).resolve()
     if not dataset_dir.exists():
         raise FileNotFoundError(f"Dataset directory not found: {dataset_dir}")
 
