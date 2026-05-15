@@ -1,0 +1,49 @@
+import json
+from pathlib import Path
+import pyrealsense2 as rs
+
+
+def export_rgb_intrinsics(serial, output_path, width=1280, height=720, fps=30):
+    pipeline = rs.pipeline()
+    config = rs.config()
+
+    config.enable_device(serial)
+    config.enable_stream(rs.stream.color, width, height, rs.format.bgr8, fps)
+
+    profile = pipeline.start(config)
+
+    try:
+        color_profile = profile.get_stream(rs.stream.color)
+        video_profile = color_profile.as_video_stream_profile()
+        intr = video_profile.get_intrinsics()
+
+        camera_matrix = [
+            [intr.fx, 0.0, intr.ppx],
+            [0.0, intr.fy, intr.ppy],
+            [0.0, 0.0, 1.0],
+        ]
+
+        dist_coeffs = list(intr.coeffs)
+
+        data = {
+            "camera_matrix": camera_matrix,
+            "dist_coeffs": dist_coeffs,
+            "width": intr.width,
+            "height": intr.height,
+            "distortion_model": str(intr.model),
+            "serial_number": serial,
+        }
+
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+        print(f"[DONE] Saved intrinsics to: {output_path}")
+        print(json.dumps(data, indent=2))
+
+    finally:
+        pipeline.stop()
+
+
+export_rgb_intrinsics("213622073198", "config/camera_a_rgb_intrinsics.json")
+export_rgb_intrinsics("213722070411", "config/camera_b_rgb_intrinsics.json")

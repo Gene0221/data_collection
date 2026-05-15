@@ -5,7 +5,7 @@ project:
 board:
   type: chessboard
   pattern_size: [9, 6]
-  square_size_mm: 25.0
+  square_size_mm: 24.0
 
 corner_detection:
   use_find_chessboard_sb: true
