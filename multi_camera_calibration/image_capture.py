@@ -97,6 +97,4 @@ if __name__ == "__main__":
         input(f"\n准备采集 {name}（SN={serial}），按 Enter 开始...")
         capture_images(name, serial)
 
-    print("✅ 两台相机图像采集完成")
-    print("   images/camera_a/  ← Camera A 标定图像")
-    print("   images/camera_b/  ← Camera B 标定图像")
+    print("图像采集完成")
