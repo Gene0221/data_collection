@@ -5,6 +5,7 @@ This directory contains the non-ROS dual-D435i workflow for:
 - synchronized RGB pair capture
 - offline RGB extrinsics estimation
 - online AprilTag pose-delta tracking in camera A coordinates
+- single-camera AprilTag pose testing
 
 ## Entry Points
 
@@ -13,6 +14,7 @@ python multi_camera_calibration/capture_two_d435i_rgb_pairs.py --list-devices
 python multi_camera_calibration/capture_two_d435i_rgb_pairs.py
 python multi_camera_calibration/estimate_rgb_extrinsics.py
 python multi_camera_calibration/track_apriltag_pose_deltas.py
+python multi_camera_calibration/test_apriltag_pose_single_camera.py
 ```
 
 ## Dependencies
@@ -30,6 +32,7 @@ You also need a working `librealsense` / `pyrealsense2` environment.
 - [config/capture.yaml](C:/Users/zhj80/OneDrive/Desktop/Master%20Course%20Material/research/data_collection/multi_camera_calibration/config/capture.yaml)
 - [config/extrinsics.yaml](C:/Users/zhj80/OneDrive/Desktop/Master%20Course%20Material/research/data_collection/multi_camera_calibration/config/extrinsics.yaml)
 - [config/apriltag_tracking.yaml](C:/Users/zhj80/OneDrive/Desktop/Master%20Course%20Material/research/data_collection/multi_camera_calibration/config/apriltag_tracking.yaml)
+- [config/apriltag_test.yaml](C:/Users/zhj80/OneDrive/Desktop/Master%20Course%20Material/research/data_collection/multi_camera_calibration/config/apriltag_test.yaml)
 
 ## RGB Capture
 
@@ -115,3 +118,23 @@ Session selection for tracking:
 - it writes tracking logs into `output/<session_name>`
 - it loads the extrinsics result from `output/<session_name>/rgb_extrinsics_result.json` by default
 - you can still override the extrinsics path in [config/apriltag_tracking.yaml](C:/Users/zhj80/OneDrive/Desktop/Master%20Course%20Material/research/data_collection/multi_camera_calibration/config/apriltag_tracking.yaml) if needed
+
+## Single-Camera AprilTag Test
+
+`test_apriltag_pose_single_camera.py` is a quick live test for AprilTag detection and pose estimation with one camera.
+
+It requires:
+
+- one camera serial number
+- that camera's RGB intrinsics
+- the real AprilTag size
+
+So yes: for this test script, the key calibration input is the single camera intrinsics, plus the physical tag size.
+
+The preview window shows:
+
+- tag outline
+- tag ID
+- pose axes
+- translation `(x, y, z)` in meters
+- pose quaternion `(qx, qy, qz, qw)`
