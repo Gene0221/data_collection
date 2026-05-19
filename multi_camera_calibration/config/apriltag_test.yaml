@@ -1,5 +1,5 @@
 camera:
-  serial_no: ""
+  serial_no: "337122072369"
   width: 1280
   height: 720
   fps: 30
@@ -16,10 +16,10 @@ apriltag:
   quad_sigma: 0.0
   refine_edges: 1
   decode_sharpening: 0.25
-  tag_ids: []
-  tag_size_m: 0.04
+  tag_ids: [0]
+  tag_size_m: 0.195
   max_hamming: 0
-  axis_length_m: 0.02
+  axis_length_m: 0.5
 
 preview:
   width: 1280

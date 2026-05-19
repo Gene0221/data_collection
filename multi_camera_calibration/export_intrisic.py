@@ -45,5 +45,5 @@ def export_rgb_intrinsics(serial, output_path, width=1280, height=720, fps=30):
         pipeline.stop()
 
 
-export_rgb_intrinsics("213622073198", "config/camera_a_rgb_intrinsics.json")
-export_rgb_intrinsics("213722070411", "config/camera_b_rgb_intrinsics.json")
+export_rgb_intrinsics("213622073198", "config/camera_a_calibration_result.json")
+export_rgb_intrinsics("337122072369", "config/camera_b_calibration_result.json")
